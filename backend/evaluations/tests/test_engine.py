@@ -10,7 +10,7 @@ from evaluations.engine import (
     score_answer_relevance,
     score_context_precision,
 )
-from evaluations.llm_clients import LLMResponse
+from evaluations.llm_clients import LLMRequestError, LLMResponse
 
 
 @pytest.fixture(autouse=True)
@@ -133,7 +133,7 @@ def test_engine_retries_api_errors_with_zero_backoff():
         def generate_json(self, **kwargs):
             self.calls += 1
             if self.calls < 3:
-                raise ValueError('bad payload')
+                raise LLMRequestError('temporary provider error', retryable=True)
             return self.mock.generate_json(**kwargs)
 
     client = FlakyClient()
@@ -144,7 +144,7 @@ def test_engine_retries_api_errors_with_zero_backoff():
     assert client.calls == 6
 
 
-def test_engine_retries_pydantic_invalid_verdict_with_zero_backoff():
+def test_invalid_verdict_is_not_retried():
     class InvalidThenValidClient:
         def __init__(self):
             self.calls = 0
@@ -157,15 +157,68 @@ def test_engine_retries_pydantic_invalid_verdict_with_zero_backoff():
 
     client = InvalidThenValidClient()
     engine = make_engine(client, retry_backoff_seconds=0)
-    verdict = engine._judge(
-        'answer_relevance',
-        {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},
-        RelevanceVerdict,
-        {'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0},
+    with pytest.raises(RuntimeError, match='failed after 1 attempt'):
+        engine._judge(
+            'answer_relevance',
+            {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},
+            RelevanceVerdict,
+            {'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0},
+        )
+
+    assert client.calls == 1
+
+
+def test_non_retryable_provider_error_is_not_retried():
+    class UnauthorizedClient:
+        def __init__(self):
+            self.calls = 0
+
+        def generate_json(self, **kwargs):
+            self.calls += 1
+            raise LLMRequestError('LLM request failed (HTTP 401)', status_code=401)
+
+    client = UnauthorizedClient()
+    engine = make_engine(client, max_retries=3, retry_backoff_seconds=0)
+
+    with pytest.raises(RuntimeError, match='HTTP 401'):
+        engine._judge(
+            'answer_relevance',
+            {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},
+            RelevanceVerdict,
+            {'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0},
+        )
+
+    assert client.calls == 1
+
+
+@pytest.mark.parametrize('status_code', [429, 503])
+def test_retryable_provider_errors_use_exponential_backoff(monkeypatch, status_code):
+    delays = []
+
+    class TemporaryFailureClient:
+        def generate_json(self, **kwargs):
+            raise LLMRequestError(
+                f'temporary provider error ({status_code})',
+                retryable=True,
+                status_code=status_code,
+            )
+
+    monkeypatch.setattr('evaluations.engine.sleep', delays.append)
+    engine = make_engine(
+        TemporaryFailureClient(),
+        max_retries=3,
+        retry_backoff_seconds=0.25,
     )
 
-    assert verdict.rating == 5
-    assert client.calls == 2
+    with pytest.raises(RuntimeError, match='failed after 3 attempts'):
+        engine._judge(
+            'answer_relevance',
+            {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},
+            RelevanceVerdict,
+            {'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0},
+        )
+
+    assert delays == [0.25, 0.5]
 
 
 def test_retries_exhausted_raise_runtime_error_with_zero_backoff():
@@ -175,7 +228,7 @@ def test_retries_exhausted_raise_runtime_error_with_zero_backoff():
 
         def generate_json(self, **kwargs):
             self.calls += 1
-            raise ValueError('invalid response')
+            raise LLMRequestError('temporary provider error', retryable=True)
 
     client = AlwaysInvalidClient()
     engine = make_engine(client, max_retries=2, retry_backoff_seconds=0)

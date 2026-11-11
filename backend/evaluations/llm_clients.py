@@ -1,4 +1,5 @@
 import json
+import socket
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -17,6 +18,13 @@ class LLMResponse:
     latency_ms: int = 0
 
 
+class LLMRequestError(RuntimeError):
+    def __init__(self, message, *, retryable=False, status_code=None):
+        super().__init__(message)
+        self.retryable = retryable
+        self.status_code = status_code
+
+
 class BaseLLMClient(ABC):
     @abstractmethod
     def generate_json(self, *, prompt, schema, model, temperature, prompt_version):
@@ -33,8 +41,21 @@ class BaseLLMClient(ABC):
         try:
             with urlopen(request, timeout=60) as response:
                 return json.loads(response.read().decode('utf-8'))
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f'LLM request failed: {exc}') from exc
+        except HTTPError as exc:
+            retryable = exc.code == 429 or 500 <= exc.code <= 599
+            raise LLMRequestError(
+                f'LLM request failed (HTTP {exc.code})',
+                retryable=retryable,
+                status_code=exc.code,
+            ) from None
+        except (TimeoutError, socket.timeout):
+            raise LLMRequestError('LLM request timed out', retryable=True) from None
+        except URLError as exc:
+            if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+                raise LLMRequestError('LLM request timed out', retryable=True) from None
+            raise LLMRequestError('LLM network request failed') from None
+        except json.JSONDecodeError:
+            raise LLMRequestError('LLM returned invalid JSON') from None
 
 
 class OpenAICompatibleClient(BaseLLMClient):

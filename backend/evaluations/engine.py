@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.cache import cache
 from pydantic import BaseModel, Field
 
-from evaluations.llm_clients import LLMResponse
+from evaluations.llm_clients import LLMRequestError, LLMResponse
 
 
 class ClaimVerdict(BaseModel):
@@ -210,6 +210,10 @@ class RAGEvaluatorEngine:
                 return verdict
             except Exception as exc:
                 last_error = exc
+                if not isinstance(exc, LLMRequestError) or not exc.retryable:
+                    raise RuntimeError(
+                        f'{metric} judge failed after {attempt + 1} attempt(s): {exc}'
+                    ) from exc
                 if attempt + 1 < self.max_retries:
                     sleep(self.retry_backoff_seconds * (2 ** attempt))
         raise RuntimeError(f'{metric} judge failed after {self.max_retries} attempts') from last_error

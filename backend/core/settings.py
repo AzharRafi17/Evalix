@@ -106,8 +106,8 @@ if not DEBUG:
         'LOCATION': env('CACHE_URL', default=env('REDIS_URL', default='redis://localhost:6379/1')),
     }
 
-EVALUATOR_PROVIDER = env('EVALUATOR_PROVIDER', default='openai')
-EVALUATOR_MODEL = env('EVALUATOR_MODEL', default='gpt-4o-mini')
+EVALUATOR_PROVIDER = env('EVALUATOR_PROVIDER', default='gemini')
+EVALUATOR_MODEL = env('EVALUATOR_MODEL', default='gemini-3.1-flash-lite')
 EVALUATOR_TEMPERATURE = env.float('EVALUATOR_TEMPERATURE', default=0.0)
 EVALUATOR_PROMPT_VERSION = env('EVALUATOR_PROMPT_VERSION', default='v1')
 EVALUATOR_MAX_RETRIES = env.int('EVALUATOR_MAX_RETRIES', default=3)
@@ -116,3 +116,8 @@ OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 OPENAI_BASE_URL = env('OPENAI_BASE_URL', default='https://api.openai.com/v1')
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
 EVALUATOR_COST_PER_1K_TOKENS = env.float('EVALUATOR_COST_PER_1K_TOKENS', default=0.0)
+MAX_BATCH_BYTES = env.int('MAX_BATCH_BYTES', default=5 * 1024 * 1024)
+MAX_BATCH_CASES = env.int('MAX_BATCH_CASES', default=1000)
+EVALUATION_TASK_CHUNK_SIZE = env.int('EVALUATION_TASK_CHUNK_SIZE', default=50)
+EVALUATION_TASK_RATE_LIMIT = env('EVALUATION_TASK_RATE_LIMIT', default='60/m')
+EVALUATION_WORKER_CONCURRENCY = env.int('EVALUATION_WORKER_CONCURRENCY', default=2)
