@@ -32,7 +32,7 @@ services:
 
   worker:
     build: ./backend
-    command: celery -A core worker -l info
+    command: sh -c "celery -A core worker -l info --concurrency=$${EVALUATION_WORKER_CONCURRENCY:-2}"
     volumes:
       - ./backend:/app
     env_file:

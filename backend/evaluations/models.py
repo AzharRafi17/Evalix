@@ -47,7 +47,7 @@ class EvaluationResult(models.Model):
 
     run = models.ForeignKey(EvaluationRun, related_name='results', on_delete=models.CASCADE)
     test_case = models.ForeignKey(TestCase, related_name='evaluation_results', on_delete=models.CASCADE)
-    faithfulness_score = models.FloatField(default=0.0)
+    faithfulness_score = models.FloatField(blank=True, null=True)
     answer_relevance_score = models.FloatField(default=0.0)
     context_precision_score = models.FloatField(default=0.0)
     context_recall_score = models.FloatField(blank=True, null=True)
@@ -59,6 +59,11 @@ class EvaluationResult(models.Model):
     latency_ms = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ok')
     error_message = models.TextField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=('run', 'test_case'), name='unique_run_test_case_result'),
+        ]
 
 
 class BenchmarkDataset(models.Model):

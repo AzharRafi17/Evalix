@@ -3,6 +3,7 @@
 ## Completed phases
 - Phase 1: Project setup complete, including initial Django migrations and a migration-application test
 - Phase 2: Evaluator engine complete with Pydantic verdicts, OpenAI-compatible and Gemini clients, versioned injection-resistant prompts, retries, Django cache support (locmem in tests, Redis in production), scoring tests, and a real-provider smoke script
+- Phase 3: Synchronous single-evaluation API, JSON/CSV batch ingestion, idempotent Celery processing with partial-failure handling, and run-status polling
 
 ## Files created
 - .env.example
@@ -33,6 +34,11 @@
 - backend/evaluations/prompts/v1/context_precision.txt
 - backend/evaluations/prompts/v1/context_recall.txt
 - backend/evaluations/tests/test_engine.py
+- backend/evaluations/serializers.py
+- backend/evaluations/tasks.py
+- backend/evaluations/migrations/0002_alter_evaluationresult_faithfulness_score_and_more.py
+- backend/evaluations/tests/test_api.py
+- backend/evaluations/tests/test_tasks.py
 - backend/scripts/smoke_eval.py
 - backend/benchmarks/__init__.py
 - backend/benchmarks/apps.py
@@ -46,4 +52,4 @@
 - Run a real-provider smoke evaluation: `.\.venv\Scripts\python.exe backend\scripts\smoke_eval.py` (requires provider credentials in `.env`)
 
 ## Next phase
-- Phase 3: Add sync evaluation and batch API endpoints, Celery processing, polling status, and tests.
+- Phase 4: Add benchmark execution, metrics, and sample dataset seeding.
