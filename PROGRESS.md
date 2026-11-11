@@ -4,6 +4,7 @@
 - Phase 1: Project setup complete, including initial Django migrations and a migration-application test
 - Phase 2: Evaluator engine complete with Pydantic verdicts, OpenAI-compatible and Gemini clients, versioned injection-resistant prompts, retries, Django cache support (locmem in tests, Redis in production), scoring tests, and a real-provider smoke script
 - Phase 3: Synchronous single-evaluation API, JSON/CSV batch ingestion, idempotent Celery processing with partial-failure handling, and run-status polling
+- Phase 4: Reusable benchmark service, classification and score metrics, async benchmark API, management command, and 30-item synthetic sample dataset seeder
 
 ## Files created
 - .env.example
@@ -39,6 +40,16 @@
 - backend/evaluations/migrations/0002_alter_evaluationresult_faithfulness_score_and_more.py
 - backend/evaluations/tests/test_api.py
 - backend/evaluations/tests/test_tasks.py
+- backend/benchmarks/models.py
+- backend/benchmarks/service.py
+- backend/benchmarks/tasks.py
+- backend/benchmarks/serializers.py
+- backend/benchmarks/views.py
+- backend/benchmarks/urls.py
+- backend/benchmarks/migrations/0001_initial.py
+- backend/benchmarks/management/commands/seed_sample_benchmark.py
+- backend/benchmarks/management/commands/run_evaluator_benchmark.py
+- backend/evaluations/tests/test_benchmark.py
 - backend/scripts/smoke_eval.py
 - backend/benchmarks/__init__.py
 - backend/benchmarks/apps.py
@@ -52,4 +63,4 @@
 - Run a real-provider smoke evaluation: `.\.venv\Scripts\python.exe backend\scripts\smoke_eval.py` (requires provider credentials in `.env`)
 
 ## Next phase
-- Phase 4: Add benchmark execution, metrics, and sample dataset seeding.
+- Phase 5: Build the Next.js playground, dashboard, batch upload, suite results, comparison, and benchmarks views.
