@@ -27,6 +27,16 @@ Install frontend dependencies with `npm install` from `frontend` when the fronte
 
 Run the Django development server from the project root with `.\.venv\Scripts\python.exe backend\manage.py runserver`.
 
+## Real-provider smoke evaluation
+
+Configure `EVALUATOR_PROVIDER` and the matching API key in `.env`, then run one live evaluation from the project root:
+
+```powershell
+.\.venv\Scripts\python.exe backend\scripts\smoke_eval.py
+```
+
+This command calls the configured LLM provider and prints the structured evaluation result, including token usage and estimated cost.
+
 ## Notes
 
 - The project uses a mockable judge abstraction so tests never hit real LLM APIs.

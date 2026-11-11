@@ -93,3 +93,26 @@ CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'evalix-tests',
+    },
+}
+if not DEBUG:
+    CACHES['default'] = {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': env('CACHE_URL', default=env('REDIS_URL', default='redis://localhost:6379/1')),
+    }
+
+EVALUATOR_PROVIDER = env('EVALUATOR_PROVIDER', default='openai')
+EVALUATOR_MODEL = env('EVALUATOR_MODEL', default='gpt-4o-mini')
+EVALUATOR_TEMPERATURE = env.float('EVALUATOR_TEMPERATURE', default=0.0)
+EVALUATOR_PROMPT_VERSION = env('EVALUATOR_PROMPT_VERSION', default='v1')
+EVALUATOR_MAX_RETRIES = env.int('EVALUATOR_MAX_RETRIES', default=3)
+EVALUATOR_RETRY_BACKOFF_SECONDS = env.float('EVALUATOR_RETRY_BACKOFF_SECONDS', default=0.1)
+OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
+OPENAI_BASE_URL = env('OPENAI_BASE_URL', default='https://api.openai.com/v1')
+GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
+EVALUATOR_COST_PER_1K_TOKENS = env.float('EVALUATOR_COST_PER_1K_TOKENS', default=0.0)
