@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -79,6 +80,7 @@ def test_benchmark_api_dispatches_and_returns_stored_report():
     assert response.status_code == 202
     run = BenchmarkRun.objects.get(pk=response.json()['id'])
     assert run.dataset_id == dataset.pk
+    assert run.owner.username == 'evalix-demo'
     enqueue.assert_called_once_with(run.pk)
 
     run.metrics = {'hallucination_detection': {'accuracy': 0.5}}
@@ -86,6 +88,32 @@ def test_benchmark_api_dispatches_and_returns_stored_report():
     detail = client.get(reverse('benchmark-detail', args=[run.pk]))
     assert detail.status_code == 200
     assert detail.json()['metrics']['hallucination_detection']['accuracy'] == 0.5
+
+
+@pytest.mark.django_db
+def test_benchmark_endpoints_require_auth_and_scope_runs(settings):
+    dataset = BenchmarkDataset.objects.create(name='Owned benchmark')
+    user_model = get_user_model()
+    alice = user_model.objects.create_user(username='benchmark-alice', password='test-password')
+    bob = user_model.objects.create_user(username='benchmark-bob', password='test-password')
+    client = APIClient()
+
+    with patch('benchmarks.views.execute_benchmark.delay') as enqueue:
+        enqueue.return_value.id = 'owned-benchmark-task'
+        settings.AUTH_REQUIRED = False
+        demo_run = client.post(reverse('benchmark-start'), {'dataset_id': dataset.pk}, format='json')
+        settings.AUTH_REQUIRED = True
+        assert client.get(reverse('benchmark-datasets')).status_code == 401
+        client.force_authenticate(user=alice)
+        response = client.post(reverse('benchmark-start'), {'dataset_id': dataset.pk}, format='json')
+
+    assert demo_run.status_code == 202
+    assert BenchmarkRun.objects.get(pk=demo_run.json()['id']).owner.username == settings.DEMO_USERNAME
+    assert response.status_code == 202
+    owned_run = BenchmarkRun.objects.get(pk=response.json()['id'])
+    assert owned_run.owner == alice
+    client.force_authenticate(user=bob)
+    assert client.get(reverse('benchmark-detail', args=[owned_run.pk])).status_code == 404
 
 
 @pytest.mark.django_db
@@ -98,3 +126,19 @@ def test_sample_benchmark_seeder_creates_thirty_idempotent_items():
     assert dataset.source == 'synthetic-sample'
     assert dataset.items.count() == 30
     assert dataset.items.filter(hallucination_label=True).count() == 15
+
+
+@pytest.mark.django_db
+def test_benchmark_dataset_list_includes_sample_counts():
+    dataset = BenchmarkDataset.objects.create(name='Visible sample', is_sample=True)
+    BenchmarkItem.objects.create(
+        dataset=dataset,
+        query='Question',
+        retrieved_contexts=['Context'],
+        llm_response='Answer',
+    )
+
+    response = APIClient().get(reverse('benchmark-datasets'))
+
+    assert response.status_code == 200
+    assert response.json() == [{'id': dataset.pk, 'name': 'Visible sample', 'item_count': 1, 'is_sample': True}]

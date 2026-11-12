@@ -80,7 +80,18 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+    'DEFAULT_PERMISSION_CLASSES': ['core.permissions.ConfigurableAuthenticationPermission'],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': env('ANON_THROTTLE_RATE', default='60/hour'),
+        'user': env('USER_THROTTLE_RATE', default='600/hour'),
+    },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
@@ -90,7 +101,12 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+AUTH_REQUIRED = env.bool('AUTH_REQUIRED', default=IN_DOCKER)
+DEMO_USERNAME = env('DEMO_USERNAME', default='evalix-demo')
+FRONTEND_ORIGIN = env('FRONTEND_ORIGIN', default='http://localhost:3000')
+SIMPLE_JWT = {'SIGNING_KEY': env('JWT_SECRET_KEY', default=SECRET_KEY)}
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN]
 
 CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')

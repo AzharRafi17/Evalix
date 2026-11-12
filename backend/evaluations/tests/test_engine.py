@@ -243,19 +243,23 @@ def test_provider_error_detail_redacts_request_credentials(monkeypatch):
     assert 'secret-value' not in str(error.value)
 
 
-def test_non_retryable_provider_error_is_not_retried():
+@pytest.mark.parametrize('status_code', [400, 401, 403])
+def test_non_retryable_provider_error_is_not_retried(status_code):
     class UnauthorizedClient:
         def __init__(self):
             self.calls = 0
 
         def generate_json(self, **kwargs):
             self.calls += 1
-            raise LLMRequestError('LLM request failed (HTTP 401)', status_code=401)
+            raise LLMRequestError(
+                f'LLM request failed (HTTP {status_code})',
+                status_code=status_code,
+            )
 
     client = UnauthorizedClient()
     engine = make_engine(client, max_retries=3, retry_backoff_seconds=0)
 
-    with pytest.raises(RuntimeError, match='HTTP 401'):
+    with pytest.raises(RuntimeError, match=f'HTTP {status_code}'):
         engine._judge(
             'answer_relevance',
             {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},

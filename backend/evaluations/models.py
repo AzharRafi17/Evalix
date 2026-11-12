@@ -1,10 +1,18 @@
+from django.conf import settings
 from django.db import models
+
+from evaluations.ownership import get_default_owner_id
 
 
 class TestSuite(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    owner = models.CharField(max_length=255, default='system')
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name='test_suites',
+        on_delete=models.CASCADE,
+        default=get_default_owner_id,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

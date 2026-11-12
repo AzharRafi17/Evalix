@@ -26,6 +26,8 @@ services:
       - "8000:8000"
     environment:
       IN_DOCKER: "true"
+      AUTH_REQUIRED: "true"
+      FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-http://localhost:3000}"
       DATABASE_URL: postgres://postgres:postgres@db:5432/evalix
       CELERY_TASK_ALWAYS_EAGER: "false"
     env_file:
@@ -41,6 +43,8 @@ services:
       - ./backend:/app
     environment:
       IN_DOCKER: "true"
+      AUTH_REQUIRED: "true"
+      FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-http://localhost:3000}"
       DATABASE_URL: postgres://postgres:postgres@db:5432/evalix
       CELERY_TASK_ALWAYS_EAGER: "false"
     env_file:

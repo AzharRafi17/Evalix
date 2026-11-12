@@ -1,4 +1,7 @@
+from django.conf import settings
 from django.db import models
+
+from evaluations.ownership import get_default_owner_id
 
 
 class BenchmarkRun(models.Model):
@@ -13,6 +16,12 @@ class BenchmarkRun(models.Model):
         'evaluations.BenchmarkDataset',
         related_name='benchmark_runs',
         on_delete=models.CASCADE,
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name='benchmark_runs',
+        on_delete=models.CASCADE,
+        default=get_default_owner_id,
     )
     judge_provider = models.CharField(max_length=50)
     judge_model = models.CharField(max_length=100)
