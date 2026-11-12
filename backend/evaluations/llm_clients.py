@@ -25,6 +25,10 @@ class LLMRequestError(RuntimeError):
         self.status_code = status_code
 
 
+class LLMResponseValidationError(ValueError):
+    pass
+
+
 class BaseLLMClient(ABC):
     @abstractmethod
     def generate_json(self, *, prompt, schema, model, temperature, prompt_version):
@@ -43,8 +47,22 @@ class BaseLLMClient(ABC):
                 return json.loads(response.read().decode('utf-8'))
         except HTTPError as exc:
             retryable = exc.code == 429 or 500 <= exc.code <= 599
+            detail = ''
+            try:
+                error_payload = json.loads(exc.read().decode('utf-8'))
+                detail = error_payload.get('error', {}).get('message', '')
+            except (AttributeError, json.JSONDecodeError, UnicodeDecodeError):
+                pass
+            secrets = [value for value in headers.values() if value]
+            for value in secrets:
+                if value.lower().startswith('bearer '):
+                    detail = detail.replace(value[7:], '[REDACTED]')
+                detail = detail.replace(value, '[REDACTED]')
+            message = f'LLM request failed (HTTP {exc.code})'
+            if detail:
+                message = f'{message}: {detail[:500]}'
             raise LLMRequestError(
-                f'LLM request failed (HTTP {exc.code})',
+                message,
                 retryable=retryable,
                 status_code=exc.code,
             ) from None
@@ -76,8 +94,12 @@ class OpenAICompatibleClient(BaseLLMClient):
             {'Authorization': f'Bearer {self.api_key}'},
         )
         choice = payload['choices'][0]['message']['content']
+        try:
+            data = json.loads(choice)
+        except json.JSONDecodeError:
+            raise LLMResponseValidationError('LLM response content was not valid JSON') from None
         return LLMResponse(
-            data=json.loads(choice),
+            data=data,
             tokens_in=payload.get('usage', {}).get('prompt_tokens', 0),
             tokens_out=payload.get('usage', {}).get('completion_tokens', 0),
             latency_ms=round((time.perf_counter() - started) * 1000),
@@ -90,9 +112,10 @@ class GeminiClient(BaseLLMClient):
 
     def generate_json(self, *, prompt, schema, model, temperature, prompt_version):
         started = time.perf_counter()
+        model_name = model.removeprefix('models/')
         url = (
             'https://generativelanguage.googleapis.com/v1beta/models/'
-            f'{quote(model, safe="")}:generateContent?key={quote(self.api_key, safe="")}'
+            f'{quote(model_name, safe="")}:generateContent'
         )
         payload = self._request_json(
             url,
@@ -101,18 +124,48 @@ class GeminiClient(BaseLLMClient):
                 'generationConfig': {
                     'temperature': temperature,
                     'responseMimeType': 'application/json',
+                    'responseJsonSchema': self._inline_json_schema(schema.model_json_schema()),
                 },
             },
-            {},
+            {'x-goog-api-key': self.api_key},
         )
-        candidate = payload['candidates'][0]['content']['parts'][0]['text']
+        try:
+            candidate = payload['candidates'][0]['content']['parts'][0]['text']
+        except (IndexError, KeyError, TypeError):
+            raise LLMResponseValidationError('Gemini response did not contain candidate text') from None
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            raise LLMResponseValidationError('Gemini response content was not valid JSON') from None
         usage = payload.get('usageMetadata', {})
         return LLMResponse(
-            data=json.loads(candidate),
+            data=data,
             tokens_in=usage.get('promptTokenCount', 0),
             tokens_out=usage.get('candidatesTokenCount', 0),
             latency_ms=round((time.perf_counter() - started) * 1000),
         )
+
+    @staticmethod
+    def _inline_json_schema(model_schema):
+        definitions = model_schema.get('$defs', {})
+
+        def inline(node):
+            if '$ref' in node:
+                definition = definitions[node['$ref'].rsplit('/', 1)[-1]]
+                return inline(definition)
+            result = {}
+            for key in ('type', 'required', 'enum', 'minimum', 'maximum', 'minItems', 'maxItems'):
+                if key in node:
+                    result[key] = node[key]
+            if 'properties' in node:
+                result['properties'] = {
+                    name: inline(value) for name, value in node['properties'].items()
+                }
+            if 'items' in node:
+                result['items'] = inline(node['items'])
+            return result
+
+        return inline(model_schema)
 
 
 def get_llm_client(provider=None):

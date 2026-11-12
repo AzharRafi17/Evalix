@@ -1,10 +1,11 @@
 # Evalix Progress
 
-## Completed phases
-- Phase 1: Project setup complete, including initial Django migrations and a migration-application test
-- Phase 2: Evaluator engine complete with Pydantic verdicts, OpenAI-compatible and Gemini clients, versioned injection-resistant prompts, retries, Django cache support (locmem in tests, Redis in production), scoring tests, and a real-provider smoke script
-- Phase 3: Synchronous single-evaluation API, JSON/CSV batch ingestion, idempotent Celery processing with partial-failure handling, and run-status polling
-- Phase 4: Reusable benchmark service, classification and score metrics, async benchmark API, management command, and 30-item synthetic sample dataset seeder
+## Earlier phases
+- Phase 1: Django setup, migrations, health endpoint, Docker Compose, and CI are present.
+- Phase 2: Evaluator engine, provider abstraction, versioned prompts, caching, scoring, and mocked tests are present.
+- Phase 3: Single and batch evaluation APIs, CSV ingestion, Celery processing, partial failures, and status polling are present.
+- Phase 4: Benchmark service and API, management commands, and 30-item synthetic sample seeder are present.
+- Phase 5: Frontend dashboard, playground, batch upload, suite results/compare, and benchmark views are present.
 
 ## Files created
 - .env.example
@@ -53,6 +54,38 @@
 - backend/scripts/smoke_eval.py
 - backend/benchmarks/__init__.py
 - backend/benchmarks/apps.py
+- SPEC.md
+- PROGRESS.md
+- package-lock.json
+- backend/core/celery.py
+- backend/evaluations/migrations/__init__.py
+- backend/evaluations/migrations/0001_initial.py
+- backend/evaluations/tests/__init__.py
+- backend/evaluations/tests/test_benchmark.py
+- backend/evaluations/tests/test_migrations.py
+- backend/benchmarks/migrations/__init__.py
+- frontend/app/benchmarks/page.tsx
+- frontend/app/evaluations/[suite_id]/page.tsx
+- frontend/app/evaluations/new/page.tsx
+- frontend/app/globals.css
+- frontend/app/layout.tsx
+- frontend/app/page.tsx
+- frontend/app/playground/page.tsx
+- frontend/components/AppShell.tsx
+- frontend/components/Providers.tsx
+- frontend/components/ScoreCard.test.tsx
+- frontend/components/ScoreCard.tsx
+- frontend/lib/api.ts
+- frontend/lib/queries.test.tsx
+- frontend/lib/queries.ts
+- frontend/next-env.d.ts
+- frontend/package.json
+- frontend/package-lock.json
+- frontend/postcss.config.js
+- frontend/tailwind.config.ts
+- frontend/test/setup.ts
+- frontend/tsconfig.json
+- frontend/vitest.config.ts
 
 ## How to run and test
 - Project root: `C:\dev\RAG-Evaluator`
@@ -62,5 +95,16 @@
 - Start docker stack: `docker compose up`
 - Run a real-provider smoke evaluation: `.\.venv\Scripts\python.exe backend\scripts\smoke_eval.py` (requires provider credentials in `.env`)
 
-## Next phase
-- Phase 5: Build the Next.js playground, dashboard, batch upload, suite results, comparison, and benchmarks views.
+## Ordered completion steps
+- Step 1: Gemini response schema, exact prompt shapes, conservative context-precision list normalization, schema-validation retries, credential-redacted provider errors, and immediate HTTP 429 stop are implemented. The full backend suite passes (36 tests). Live smoke remains PARTIAL: all three allowed smoke invocations returned HTTP 404 because the runtime-configured model `gemini-2.5-flash` is no longer available to new users. Gemini's sanitized response recommends `gemini-3.8-flash`. No further smoke attempt was made; `.env` was not inspected or edited. `.env.example` now uses the recommended model.
+- Step 2: Not started.
+- Step 3: Not started.
+- Step 4: Not started.
+- Step 5: Not started.
+- Step 6: Not started.
+- Step 7: Not started.
+
+## Latest validation
+- `\.venv\Scripts\python.exe -m pytest backend -q`: 36 passed; pytest emitted collection warnings for Django models named `TestCase` and `TestSuite`.
+- Live smoke final sanitized error: `HTTP 404: This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements.`
+- Gemini ListModels returned `models/gemini-3.8-flash` among models supporting `generateContent`.

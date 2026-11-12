@@ -1,3 +1,6 @@
+from io import BytesIO
+from urllib.error import HTTPError
+
 import pytest
 from django.core.cache import cache
 
@@ -10,7 +13,7 @@ from evaluations.engine import (
     score_answer_relevance,
     score_context_precision,
 )
-from evaluations.llm_clients import LLMRequestError, LLMResponse
+from evaluations.llm_clients import BaseLLMClient, GeminiClient, LLMRequestError, LLMResponse
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +147,7 @@ def test_engine_retries_api_errors_with_zero_backoff():
     assert client.calls == 6
 
 
-def test_invalid_verdict_is_not_retried():
+def test_invalid_verdict_is_retried():
     class InvalidThenValidClient:
         def __init__(self):
             self.calls = 0
@@ -157,15 +160,87 @@ def test_invalid_verdict_is_not_retried():
 
     client = InvalidThenValidClient()
     engine = make_engine(client, retry_backoff_seconds=0)
-    with pytest.raises(RuntimeError, match='failed after 1 attempt'):
-        engine._judge(
-            'answer_relevance',
-            {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},
-            RelevanceVerdict,
-            {'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0},
+    verdict = engine._judge(
+        'answer_relevance',
+        {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None},
+        RelevanceVerdict,
+        {'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0},
+    )
+
+    assert verdict.rating == 5
+    assert client.calls == 2
+
+
+@pytest.mark.parametrize('bare_list', [
+    [True, False],
+    [{'relevant': True}, {'relevant': False}],
+    [{'chunk_index': 0, 'relevant': True}, {'chunk_index': 1, 'relevant': False}],
+])
+def test_context_precision_normalizes_unambiguous_bare_lists(bare_list):
+    client = MockClient({ContextPrecisionVerdict: bare_list})
+    result = evaluate(make_engine(client), contexts=['A', 'B'], ground_truth=None)
+
+    assert result['context_precision_score'] == 1.0
+    assert result['details']['context_chunks'] == [
+        {'chunk_index': 0, 'relevant': True},
+        {'chunk_index': 1, 'relevant': False},
+    ]
+
+
+def test_gemini_uses_json_mode_and_inlined_response_schema(monkeypatch):
+    captured = {}
+
+    def request_json(self, url, payload, headers):
+        captured['payload'] = payload
+        captured['url'] = url
+        captured['headers'] = headers
+        return {
+            'candidates': [{'content': {'parts': [{'text': '{"chunks":[],"reasoning":"none"}'}]}}],
+            'usageMetadata': {'promptTokenCount': 3, 'candidatesTokenCount': 4},
+        }
+
+    monkeypatch.setattr('evaluations.llm_clients.BaseLLMClient._request_json', request_json)
+    client = GeminiClient(api_key='test-key')
+    response = client.generate_json(
+        prompt='judge',
+        schema=ContextPrecisionVerdict,
+        model='models/test-model',
+        temperature=0,
+        prompt_version='v1',
+    )
+
+    config = captured['payload']['generationConfig']
+    assert captured['url'].endswith('/models/test-model:generateContent')
+    assert captured['headers'] == {'x-goog-api-key': 'test-key'}
+    assert config['responseMimeType'] == 'application/json'
+    assert config['responseJsonSchema']['properties']['chunks']['items']['properties'] == {
+        'chunk_index': {'type': 'integer', 'minimum': 0},
+        'relevant': {'type': 'boolean'},
+    }
+    assert response.data == {'chunks': [], 'reasoning': 'none'}
+
+
+def test_provider_error_detail_redacts_request_credentials(monkeypatch):
+    def raise_http_error(request, timeout):
+        raise HTTPError(
+            request.full_url,
+            404,
+            'Not Found',
+            hdrs=None,
+            fp=BytesIO(b'{"error":{"message":"Unavailable for secret-value"}}'),
         )
 
-    assert client.calls == 1
+    monkeypatch.setattr('evaluations.llm_clients.urlopen', raise_http_error)
+    with pytest.raises(LLMRequestError) as error:
+        BaseLLMClient._request_json(
+            'https://provider.invalid/generate',
+            {},
+            {'x-goog-api-key': 'secret-value'},
+        )
+
+    assert error.value.status_code == 404
+    assert '[REDACTED]' in str(error.value)
+    assert 'secret-value' not in str(error.value)
 
 
 def test_non_retryable_provider_error_is_not_retried():
@@ -191,7 +266,7 @@ def test_non_retryable_provider_error_is_not_retried():
     assert client.calls == 1
 
 
-@pytest.mark.parametrize('status_code', [429, 503])
+@pytest.mark.parametrize('status_code', [503])
 def test_retryable_provider_errors_use_exponential_backoff(monkeypatch, status_code):
     delays = []
 
@@ -219,6 +294,27 @@ def test_retryable_provider_errors_use_exponential_backoff(monkeypatch, status_c
         )
 
     assert delays == [0.25, 0.5]
+
+
+def test_http_429_stops_immediately_with_clear_message():
+    class RateLimitedClient:
+        def __init__(self):
+            self.calls = 0
+
+        def generate_json(self, **kwargs):
+            self.calls += 1
+            raise LLMRequestError('LLM request failed (HTTP 429)', retryable=True, status_code=429)
+
+    client = RateLimitedClient()
+    engine = make_engine(client, max_retries=3, retry_backoff_seconds=0)
+    context = {'query': 'q', 'retrieved_contexts': [], 'llm_response': 'a', 'ground_truth': None}
+
+    with pytest.raises(RuntimeError, match='HTTP 429 rate limit; retry later'):
+        engine._judge('answer_relevance', context, RelevanceVerdict, {
+            'tokens_in': 0, 'tokens_out': 0, 'latency_ms': 0,
+        })
+
+    assert client.calls == 1
 
 
 def test_retries_exhausted_raise_runtime_error_with_zero_backoff():

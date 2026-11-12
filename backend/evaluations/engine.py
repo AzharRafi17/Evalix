@@ -200,6 +200,7 @@ class RAGEvaluatorEngine:
                 else:
                     data = response
                     totals['latency_ms'] += round((time.perf_counter() - started) * 1000)
+                data = self._normalize_response(metric, data, context)
                 verdict = schema.model_validate(data)
                 if metric == 'context_precision':
                     indexes = [item.chunk_index for item in verdict.chunks]
@@ -210,13 +211,54 @@ class RAGEvaluatorEngine:
                 return verdict
             except Exception as exc:
                 last_error = exc
-                if not isinstance(exc, LLMRequestError) or not exc.retryable:
+                if isinstance(exc, LLMRequestError):
+                    if exc.status_code == 429:
+                        raise RuntimeError(
+                            f'{metric} judge stopped after HTTP 429 rate limit; retry later'
+                        ) from exc
+                    retryable = exc.retryable
+                else:
+                    retryable = isinstance(exc, ValueError)
+                if not retryable:
                     raise RuntimeError(
                         f'{metric} judge failed after {attempt + 1} attempt(s): {exc}'
                     ) from exc
                 if attempt + 1 < self.max_retries:
                     sleep(self.retry_backoff_seconds * (2 ** attempt))
-        raise RuntimeError(f'{metric} judge failed after {self.max_retries} attempts') from last_error
+        raise RuntimeError(
+            f'{metric} judge failed after {self.max_retries} attempts: {last_error}'
+        ) from last_error
+
+    @staticmethod
+    def _normalize_response(metric, data, context):
+        if metric != 'context_precision' or not isinstance(data, list):
+            return data
+
+        count = len(context['retrieved_contexts'])
+        if len(data) == count and all(type(value) is bool for value in data):
+            chunks = [
+                {'chunk_index': index, 'relevant': relevant}
+                for index, relevant in enumerate(data)
+            ]
+        elif len(data) == count and all(
+            isinstance(value, dict)
+            and set(value) == {'relevant'}
+            and type(value['relevant']) is bool
+            for value in data
+        ):
+            chunks = [
+                {'chunk_index': index, 'relevant': value['relevant']}
+                for index, value in enumerate(data)
+            ]
+        elif all(
+            isinstance(value, dict)
+            and {'chunk_index', 'relevant'} <= set(value)
+            for value in data
+        ):
+            chunks = data
+        else:
+            return data
+        return {'chunks': chunks, 'reasoning': ''}
 
     def _cache_key(self, query, retrieved_contexts, llm_response, ground_truth):
         payload = json.dumps(
