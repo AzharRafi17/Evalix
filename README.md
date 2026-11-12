@@ -9,23 +9,25 @@ Client -> Next.js frontend -> Django REST API -> Celery workers -> PostgreSQL + 
                           \-> RAGEvaluatorEngine -> LLM providers
 ```
 
-## Local setup
+## Local setup without Docker
 
 From PowerShell in `C:\dev\RAG-Evaluator`:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+\.venv\Scripts\python.exe backend\manage.py migrate
+\.venv\Scripts\python.exe backend\manage.py runserver
 ```
 
-Install frontend dependencies with `npm install` from `frontend` when the frontend is available. Start the services from the project root with `docker compose up`.
+Local settings use SQLite at `backend\db.sqlite3` and eager Celery tasks, so a local run does not require Docker, PostgreSQL, Redis, or a copied `.env`. Docker Compose sets `IN_DOCKER=true` and uses its PostgreSQL and Redis services.
+
+Install frontend dependencies with `npm install` from `frontend` when working on the frontend. Start the Docker services from the project root with `docker compose up`.
 
 ## Running tests
 
 - Backend (from `C:\dev\RAG-Evaluator`): `.\.venv\Scripts\python.exe -m pytest backend -q`
 - Frontend (from `C:\dev\RAG-Evaluator\frontend`): `npm test`
-
-Run the Django development server from the project root with `.\.venv\Scripts\python.exe backend\manage.py runserver`.
 
 ## Real-provider smoke evaluation
 

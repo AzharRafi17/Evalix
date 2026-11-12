@@ -57,8 +57,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 ASGI_APPLICATION = 'core.asgi.application'
 
-DATABASE_URL = env('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
-DATABASES = {'default': dj_database_url.parse(DATABASE_URL)}
+IN_DOCKER = env.bool('IN_DOCKER', default=False)
+DATABASE_URL = env('DATABASE_URL', default='')
+if IN_DOCKER and DATABASE_URL:
+    DATABASES = {'default': dj_database_url.parse(DATABASE_URL)}
+else:
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': str(BASE_DIR / 'db.sqlite3')}}
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -90,6 +94,8 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_TASK_ALWAYS_EAGER = env.bool('CELERY_TASK_ALWAYS_EAGER', default=not IN_DOCKER)
+CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -115,6 +121,8 @@ EVALUATOR_RETRY_BACKOFF_SECONDS = env.float('EVALUATOR_RETRY_BACKOFF_SECONDS', d
 OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 OPENAI_BASE_URL = env('OPENAI_BASE_URL', default='https://api.openai.com/v1')
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
+if EVALUATOR_PROVIDER == 'gemini' and (not GEMINI_API_KEY or GEMINI_API_KEY == 'replace-me'):
+    print('Evalix startup warning: GEMINI_API_KEY is not configured. Set it in .env before using the Gemini evaluator.')
 EVALUATOR_COST_PER_1K_TOKENS = env.float('EVALUATOR_COST_PER_1K_TOKENS', default=0.0)
 MAX_BATCH_BYTES = env.int('MAX_BATCH_BYTES', default=5 * 1024 * 1024)
 MAX_BATCH_CASES = env.int('MAX_BATCH_CASES', default=1000)

@@ -97,7 +97,7 @@
 
 ## Ordered completion steps
 - Step 1: Gemini response schema, exact prompt shapes, conservative context-precision list normalization, schema-validation retries, credential-redacted provider errors, and immediate HTTP 429 stop are implemented. The full backend suite passes (36 tests). Live smoke remains PARTIAL: all three allowed smoke invocations returned HTTP 404 because the runtime-configured model `gemini-2.5-flash` is no longer available to new users. Gemini's sanitized response recommends `gemini-3.8-flash`. No further smoke attempt was made; `.env` was not inspected or edited. `.env.example` now uses the recommended model.
-- Step 2: Not started.
+- Step 2: DONE. `IN_DOCKER` now controls PostgreSQL selection; local settings ignore the Compose-only `db` URL and use `backend/db.sqlite3` with eager Celery. The cause was `.env` providing the Docker service hostname to local commands, plus a prior process-local SQLite URL pointing to a nonexistent `/tmp` directory. README documents local migrate/runserver commands.
 - Step 3: Not started.
 - Step 4: Not started.
 - Step 5: Not started.
@@ -106,5 +106,7 @@
 
 ## Latest validation
 - `\.venv\Scripts\python.exe -m pytest backend -q`: 36 passed; pytest emitted collection warnings for Django models named `TestCase` and `TestSuite`.
+- `\.venv\Scripts\python.exe backend\manage.py migrate --noinput`: all Django, evaluation, benchmark, and session migrations applied on SQLite.
+- `\.venv\Scripts\python.exe backend\manage.py runserver 127.0.0.1:8001 --noreload`: system check had no issues; `GET /api/v1/health/` returned `{"status": "ok", "service": "evalix"}`.
 - Live smoke final sanitized error: `HTTP 404: This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements.`
 - Gemini ListModels returned `models/gemini-3.8-flash` among models supporting `generateContent`.

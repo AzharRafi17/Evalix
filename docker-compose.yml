@@ -24,6 +24,10 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
+    environment:
+      IN_DOCKER: "true"
+      DATABASE_URL: postgres://postgres:postgres@db:5432/evalix
+      CELERY_TASK_ALWAYS_EAGER: "false"
     env_file:
       - .env
     depends_on:
@@ -35,6 +39,10 @@ services:
     command: sh -c "celery -A core worker -l info --concurrency=$${EVALUATION_WORKER_CONCURRENCY:-2}"
     volumes:
       - ./backend:/app
+    environment:
+      IN_DOCKER: "true"
+      DATABASE_URL: postgres://postgres:postgres@db:5432/evalix
+      CELERY_TASK_ALWAYS_EAGER: "false"
     env_file:
       - .env
     depends_on:
